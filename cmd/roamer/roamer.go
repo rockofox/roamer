@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/fatih/color"
+	"github.com/felkr/roamer/internal/allocation"
 	"github.com/felkr/roamer/internal/configuration"
 	"github.com/hashicorp/hcl/v2/hclsimple"
 	"github.com/hashicorp/nomad/api"
@@ -68,7 +69,7 @@ func main() {
 		jobFile, err := os.Open(jobPath)
 
 		if os.IsNotExist(err) {
-			return cli.NewExitError(jobPath+": No such file or directory", 1)
+			return cli.Exit(jobPath+": No such file or directory", 1)
 		}
 
 		job, err := jobspec2.Parse(jobPath, jobFile)
@@ -78,77 +79,17 @@ func main() {
 		var config configuration.Config
 		err = hclsimple.DecodeFile(configPath, nil, &config)
 		if err != nil {
-			log.Fatalf("Failed to load configuration: %s", err)
-		}
-		if config.Infrastructure.SafetyMargin == 0 {
-			config.Infrastructure.SafetyMargin = 3
-		}
-		absoluteTasks := 0
-		for _, group := range job.TaskGroups {
-			tasksInGroup := len(group.Tasks)
-
-			if group.Count != nil {
-				tasksInGroup *= *group.Count
-			}
-			absoluteTasks += tasksInGroup
-		}
-		availableCPU := config.Infrastructure.CPU * (1.0 - ((config.Infrastructure.SafetyMargin) / 100))
-		availableMemory := config.Infrastructure.Memory * (1.0 - ((config.Infrastructure.SafetyMargin) / 100))
-		weightlessTasks := absoluteTasks
-
-		// First assign resources to the groups that have a weight set in the config file
-		for _, group := range job.TaskGroups {
-			if group.Count == nil {
-				group.Count = new(int)
-				*group.Count = 1
-			}
-			for _, task := range group.Tasks {
-
-				sumOfWeights := 0
-				for _, groupConfig := range config.Groups {
-					sumOfWeights += groupConfig.Weight
-					if sumOfWeights > 100 {
-						return cli.Exit("Sum of weights greater than 100", 1)
-					}
-					if groupConfig.Name == *group.Name {
-						assignedMemory := config.Infrastructure.Memory * groupConfig.Weight / 100 / len(group.Tasks)
-						assignedCPU := config.Infrastructure.CPU * groupConfig.Weight / 100 / len(group.Tasks)
-						*task.Resources.MemoryMB = assignedMemory
-						*task.Resources.CPU = assignedCPU
-						availableCPU -= assignedCPU
-						availableMemory -= assignedMemory
-						weightlessTasks--
-					}
-				}
-			}
+			return cli.Exit("Failed to load configuration: "+err.Error(), 1)
 		}
 
-		// Then evenly split up the rest
-		for _, group := range job.TaskGroups {
-			if group.Count == nil {
-				group.Count = new(int)
-				*group.Count = 1
-			}
-			found := false
-			for _, task := range group.Tasks {
-				for _, groupConfig := range config.Groups {
-					if groupConfig.Name == *group.Name {
-						found = true
-					}
-				}
-
-				if !found {
-					assignedMemory := availableMemory / weightlessTasks
-					assignedCPU := availableCPU / weightlessTasks
-					*task.Resources.MemoryMB = assignedMemory
-					*task.Resources.CPU = assignedCPU
-				}
-			}
+		err = allocation.Allocate(config, job)
+		if err != nil {
+			return cli.Exit("Failed create allocation: "+err.Error(), 1)
 		}
 
 		// Print
 		for _, group := range job.TaskGroups {
-			c := color.New(color.Underline)
+			c := color.New(color.Bold).Add(color.FgBlack)
 			c.Printf("%s", *group.Name)
 
 			if group.Count != nil {
@@ -180,10 +121,11 @@ func main() {
 		client, err := api.NewClient(clientConfig)
 		if c.Bool("yes") || askForDeployment() {
 			client.Jobs().Plan(job, false, &api.WriteOptions{})
+			_, err = client.Status().Leader()
 		}
 
 		if err != nil {
-			log.Fatalf("%s", err)
+			return cli.Exit("Nomad returned an error: "+err.Error(), 1)
 		}
 		return nil
 	}
