@@ -11,7 +11,8 @@ import (
 	"github.com/hashicorp/nomad/api"
 	"github.com/hashicorp/nomad/jobspec"
 	"github.com/hashicorp/nomad/jobspec2"
-	"github.com/urfave/cli"
+	"github.com/manifoldco/promptui"
+	"github.com/urfave/cli/v2"
 )
 
 func drawUnitBar(part int, full int, unit string, label string) {
@@ -26,19 +27,35 @@ func drawUnitBar(part int, full int, unit string, label string) {
 	}
 	fmt.Printf("%s  %.2f%%\n", string(bar), float32(part)/float32(full)*100.0)
 }
+func askForDeployment() bool {
+	prompt := promptui.Select{
+		Label: "Deploy? [Yes/No]",
+		Items: []string{"Yes", "No"},
+	}
+	_, result, err := prompt.Run()
+	if err != nil {
+		log.Fatalf("Prompt failed %v\n", err)
+	}
+	return result == "Yes"
+}
 func main() {
 	jobspec.ParseFile("config.hcl")
 	address := new(string)
 	app := &cli.App{
 		Name:      "roamer",
 		Usage:     "streamlined nomad deployment",
-		UsageText: "roamer <config hcl file> <job hcl file>",
+		UsageText: "roamer [flags] <config hcl file> <job hcl file>",
 	}
 	app.Flags = append(app.Flags, &cli.StringFlag{
 		Name:        "address",
 		Usage:       "The address of the Nomad server",
 		Value:       "http://localhost:4646",
 		Destination: address,
+	})
+	app.Flags = append(app.Flags, &cli.BoolFlag{
+		Name:    "yes",
+		Usage:   "Don't ask questions, answer yes",
+		Aliases: []string{"y"},
 	})
 
 	app.Action = func(c *cli.Context) error {
@@ -75,13 +92,10 @@ func main() {
 			}
 			absoluteTasks += tasksInGroup
 		}
-		// cpu := distributeEvenly(config.Infrastructure.CPU, absoluteTasks, config)
-		// mem := distributeEvenly(config.Infrastructure.Memory, absoluteTasks, config)
-		// fmt.Printf("CPU per group %d\n", cpu)
-		// fmt.Printf("Memory per group %d\n", mem)
 		availableCPU := config.Infrastructure.CPU * (1.0 - ((config.Infrastructure.SafetyMargin) / 100))
 		availableMemory := config.Infrastructure.Memory * (1.0 - ((config.Infrastructure.SafetyMargin) / 100))
 		weightlessTasks := absoluteTasks
+
 		// First assign resources to the groups that have a weight set in the config file
 		for _, group := range job.TaskGroups {
 			if group.Count == nil {
@@ -94,7 +108,7 @@ func main() {
 				for _, groupConfig := range config.Groups {
 					sumOfWeights += groupConfig.Weight
 					if sumOfWeights > 100 {
-						return cli.NewExitError("Sum of weights greater than 100", 1)
+						return cli.Exit("Sum of weights greater than 100", 1)
 					}
 					if groupConfig.Name == *group.Name {
 						assignedMemory := config.Infrastructure.Memory * groupConfig.Weight / 100 / len(group.Tasks)
@@ -108,6 +122,7 @@ func main() {
 				}
 			}
 		}
+
 		// Then evenly split up the rest
 		for _, group := range job.TaskGroups {
 			if group.Count == nil {
@@ -127,8 +142,6 @@ func main() {
 					assignedCPU := availableCPU / weightlessTasks
 					*task.Resources.MemoryMB = assignedMemory
 					*task.Resources.CPU = assignedCPU
-					// availableCPU -= assignedCPU
-					// availableMemory -= assignedMemory
 				}
 			}
 		}
@@ -157,8 +170,6 @@ func main() {
 				fmt.Print("\u251c\u2500\u2500 ")
 				c := color.New(color.FgBlack).Add(color.Bold)
 				c.Println(task.Name)
-				c = color.New(color.FgBlack).Add(color.Italic)
-				// fmt.Println()
 				drawUnitBar(*task.Resources.MemoryMB, config.Infrastructure.Memory, "MB", "\u2502\tMemory")
 				drawUnitBar(*task.Resources.CPU, config.Infrastructure.CPU, "MHz", "\u2514\tCPU")
 			}
@@ -166,8 +177,10 @@ func main() {
 
 		clientConfig := api.DefaultConfig()
 		clientConfig.Address = *address
-		// client, err := api.NewClient(clientConfig)
-		// client.Jobs().Plan(job, false, &api.WriteOptions{})
+		client, err := api.NewClient(clientConfig)
+		if c.Bool("yes") || askForDeployment() {
+			client.Jobs().Plan(job, false, &api.WriteOptions{})
+		}
 
 		if err != nil {
 			log.Fatalf("%s", err)
