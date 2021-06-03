@@ -1,6 +1,7 @@
 package configuration
 
+// Config provides the structure of the config hcl file
 type Config struct {
-	Infrastructure InfrastructureConfig `hcl:"infrastructure,block"`
-	Groups         []GroupConfig        `hcl:"group,block"`
+	ClusterConfig *ClusterConfiguration `hcl:"cluster,block"`
+	Groups        []GroupConfig         `hcl:"group,block"`
 }

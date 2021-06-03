@@ -8,9 +8,6 @@ import (
 )
 
 func Allocate(config configuration.Config, job *api.Job) error {
-	if config.Infrastructure.SafetyMargin == 0 {
-		config.Infrastructure.SafetyMargin = 3
-	}
 	absoluteTasks := 0
 	for _, group := range job.TaskGroups {
 		tasksInGroup := len(group.Tasks)
@@ -20,8 +17,9 @@ func Allocate(config configuration.Config, job *api.Job) error {
 		}
 		absoluteTasks += tasksInGroup
 	}
-	availableCPU := config.Infrastructure.CPU * (1.0 - ((config.Infrastructure.SafetyMargin) / 100))
-	availableMemory := config.Infrastructure.Memory * (1.0 - ((config.Infrastructure.SafetyMargin) / 100))
+	availableCPU := int(float32(*config.ClusterConfig.CPU) * (1.0 - (float32(*config.ClusterConfig.SafetyMargin) / 100.0)))
+	availableMemory := int(float32(*config.ClusterConfig.Memory) * (1.0 - (float32(*config.ClusterConfig.SafetyMargin) / 100.0)))
+	println(availableMemory)
 	weightlessTasks := absoluteTasks
 
 	// First assign resources to the groups that have a weight set in the config file
@@ -36,11 +34,11 @@ func Allocate(config configuration.Config, job *api.Job) error {
 			for _, groupConfig := range config.Groups {
 				sumOfWeights += groupConfig.Weight
 				if sumOfWeights > 100 {
-					return errors.New("Sub of weights greater than 100")
+					return errors.New("sum of weights greater than 100")
 				}
 				if groupConfig.Name == *group.Name {
-					assignedMemory := config.Infrastructure.Memory * groupConfig.Weight / 100 / len(group.Tasks)
-					assignedCPU := config.Infrastructure.CPU * groupConfig.Weight / 100 / len(group.Tasks)
+					assignedMemory := availableMemory * groupConfig.Weight / 100 / len(group.Tasks)
+					assignedCPU := availableCPU * groupConfig.Weight / 100 / len(group.Tasks)
 					*task.Resources.MemoryMB = assignedMemory
 					*task.Resources.CPU = assignedCPU
 					availableCPU -= assignedCPU
