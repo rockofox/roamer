@@ -22,17 +22,22 @@
 ## Installation
     go install github.com/felkr/roamer
 ## Usage
-      roamer [global options] command [command options] [arguments...]
+    roamer [global options] command [command options] [arguments...]
 
-    COMMANDS:
-      overview   
-      deploy, d  Allocate resources and deploy to a nomad server
-      help, h    Shows a list of commands or help for one command
+### Commands
+| Command  | Functionality                                    |
+| -------- | ------------------------------------------------ |
+| overview | Show a simple overview                           |
+| deploy   | Allocate resources and deploy to a nomad server  |
+| help     | Shows a list of commands or help for one command |
 
-    GLOBAL OPTIONS:
-      --yes, -y        Don't ask questions, answer yes (default: false)
-      --address value  The address of the Nomad server (default: "http://localhost:4646")
-      --help, -h       show help (default: false)
 
-    EXAMPLES:
-      roamer deploy --config deployment.hcl my_project.nomad
+### Global Options
+| Flag            | Meaning                                                            |
+| --------------- | ------------------------------------------------------------------ |
+| --yes, -y       | Don't ask questions, answer yes (default: false)                   |
+| --address value | The address of the Nomad server (default: "http://localhost:4646") |
+| --help, -h      | show help (default: false)                                         |
+
+### Examples
+    roamer deploy --config deployment.hcl my_project.nomad
