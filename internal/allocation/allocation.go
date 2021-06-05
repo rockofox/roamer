@@ -7,7 +7,23 @@ import (
 	"github.com/hashicorp/nomad/api"
 )
 
-func Allocate(config configuration.Config, job *api.Job) error {
+func applySafetyMargin(resource int, config configuration.Config) int {
+	return int(float32(resource) * (1.0 - (float32(*config.ClusterConfig.SafetyMargin) / 100.0)))
+}
+func minOf(vars ...int) int {
+	min := vars[0]
+
+	for _, i := range vars {
+		if min > i {
+			min = i
+		}
+	}
+
+	return min
+}
+
+// Allocate resources to the given job
+func Allocate(config configuration.Config, job *api.Job, smallestMemory int, smallestCPU int) error {
 	absoluteTasks := 0
 	for _, group := range job.TaskGroups {
 		tasksInGroup := len(group.Tasks)
@@ -17,8 +33,8 @@ func Allocate(config configuration.Config, job *api.Job) error {
 		}
 		absoluteTasks += tasksInGroup
 	}
-	availableCPU := int(float32(*config.ClusterConfig.CPU) * (1.0 - (float32(*config.ClusterConfig.SafetyMargin) / 100.0)))
-	availableMemory := int(float32(*config.ClusterConfig.Memory) * (1.0 - (float32(*config.ClusterConfig.SafetyMargin) / 100.0)))
+	availableCPU := *config.ClusterConfig.CPU
+	availableMemory := *config.ClusterConfig.Memory
 	println(availableMemory)
 	weightlessTasks := absoluteTasks
 
@@ -37,10 +53,15 @@ func Allocate(config configuration.Config, job *api.Job) error {
 					return errors.New("sum of weights greater than 100")
 				}
 				if groupConfig.Name == *group.Name {
-					assignedMemory := availableMemory * groupConfig.Weight / 100 / len(group.Tasks)
-					assignedCPU := availableCPU * groupConfig.Weight / 100 / len(group.Tasks)
-					*task.Resources.MemoryMB = assignedMemory
-					*task.Resources.CPU = assignedCPU
+					assignedMemory := minOf(smallestMemory, availableMemory) * groupConfig.Weight / 100 / len(group.Tasks)
+					assignedCPU := minOf(availableCPU, smallestCPU) * groupConfig.Weight / 100 / len(group.Tasks)
+					if task.Resources == nil {
+						task.Resources = new(api.Resources)
+						task.Resources.MemoryMB = new(int)
+						task.Resources.CPU = new(int)
+					}
+					*task.Resources.MemoryMB = applySafetyMargin(assignedMemory, config)
+					*task.Resources.CPU = applySafetyMargin(assignedCPU, config)
 					availableCPU -= assignedCPU
 					availableMemory -= assignedMemory
 					weightlessTasks--
@@ -64,10 +85,15 @@ func Allocate(config configuration.Config, job *api.Job) error {
 			}
 
 			if !found {
-				assignedMemory := availableMemory / weightlessTasks
-				assignedCPU := availableCPU / weightlessTasks
-				*task.Resources.MemoryMB = assignedMemory
-				*task.Resources.CPU = assignedCPU
+				assignedMemory := minOf(availableMemory, smallestMemory) / weightlessTasks
+				assignedCPU := minOf(availableCPU, smallestCPU) / weightlessTasks
+				if task.Resources == nil {
+					task.Resources = new(api.Resources)
+					task.Resources.MemoryMB = new(int)
+					task.Resources.CPU = new(int)
+				}
+				*task.Resources.MemoryMB = applySafetyMargin(assignedMemory, config)
+				*task.Resources.CPU = applySafetyMargin(assignedCPU, config)
 			}
 		}
 	}

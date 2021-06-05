@@ -88,19 +88,31 @@ func getResourceUsage(client api.Client) (memory int64, cpu int64) {
 	}
 	return totalMemory, totalCPU
 }
-func getClusterResources(client api.Client) (memory int64, cpu int64) {
+func getClusterResources(client api.Client) (memory int64, cpu int64, smallestMemory int64, smallestCPU int64) {
 	totalMemory := int64(0)
 	totalCPU := int64(0)
+	smallestCPU = int64(0)
+	smallestMemory = int64(0)
 	nodes, _, _ := client.Nodes().List(&api.QueryOptions{
 		Params: map[string]string{"resources": "true"},
 	})
+	if nodes[0].NodeResources != nil {
+		smallestCPU = nodes[0].NodeResources.Cpu.CpuShares
+		smallestMemory = nodes[0].NodeResources.Memory.MemoryMB
+	}
 	for _, node := range nodes {
 		if node.NodeResources != nil {
 			totalCPU += node.NodeResources.Cpu.CpuShares
 			totalMemory += int64(node.NodeResources.Memory.MemoryMB)
+			if node.NodeResources.Cpu.CpuShares < smallestCPU {
+				smallestCPU = node.NodeResources.Cpu.CpuShares
+			}
+			if node.NodeResources.Memory.MemoryMB < smallestMemory {
+				smallestMemory = node.NodeResources.Memory.MemoryMB
+			}
 		}
 	}
-	return totalMemory, totalCPU
+	return totalMemory, totalCPU, smallestMemory, smallestCPU
 }
 
 func main() {
@@ -138,7 +150,7 @@ EXAMPLES:
 				clientConfig := api.DefaultConfig()
 				clientConfig.Address = *address
 				client, _ := api.NewClient(clientConfig)
-				clusterMemory, clusterCPU := getClusterResources(*client)
+				clusterMemory, clusterCPU, _, _ := getClusterResources(*client)
 
 				jobs, _, err := client.Jobs().List(&api.QueryOptions{})
 				for _, job := range jobs {
@@ -210,34 +222,32 @@ EXAMPLES:
 				if err != nil {
 					log.Fatal(err)
 				}
-				clusterMemoryTotal, clusterCPUTotal := getClusterResources(*client)
+				clusterMemoryTotal, clusterCPUTotal, smallestMemory, smallestCPU := getClusterResources(*client)
 				usedMemory, usedCPU := getResourceUsage(*client)
 				clusterMemory := clusterMemoryTotal - usedMemory
 				clusterCPU := clusterCPUTotal - usedCPU
 
-				config.ClusterConfig.CPU = new(int)
-				*config.ClusterConfig.CPU = int(clusterCPU)
-				config.ClusterConfig.Memory = new(int)
-				*config.ClusterConfig.Memory = int(clusterMemory)
+				if config.ClusterConfig == nil {
+					config.ClusterConfig = new(configuration.ClusterConfiguration)
+				}
 
-				// Don't swap those two conditions around (short-circuit evaluation)
-				if config.ClusterConfig == nil || config.ClusterConfig.SafetyMargin == nil {
+				if config.ClusterConfig.SafetyMargin == nil {
 					safetyMargin := new(int)
 					*safetyMargin = 3
 					config.ClusterConfig.SafetyMargin = safetyMargin
 				}
-				if config.ClusterConfig == nil || config.ClusterConfig.CPU == nil {
+				if config.ClusterConfig.CPU == nil {
 					infrastructureCPU := new(int)
 					*infrastructureCPU = int(clusterCPU)
 					config.ClusterConfig.CPU = infrastructureCPU
 				}
-				if config.ClusterConfig == nil || config.ClusterConfig.Memory == nil {
+				if config.ClusterConfig.Memory == nil {
 					infrastructureMemory := new(int)
 					*infrastructureMemory = int(clusterMemory)
 					config.ClusterConfig.Memory = infrastructureMemory
 				}
 
-				err = allocation.Allocate(config, job)
+				err = allocation.Allocate(config, job, int(smallestMemory), int(smallestCPU))
 				if err != nil {
 					return cli.Exit("Failed create allocation: "+err.Error(), 1)
 				}
