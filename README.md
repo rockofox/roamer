@@ -21,10 +21,6 @@
 *   Configuration via [HCL](https://github.com/hashicorp/hcl) files
 *   Useful tools for observing deployments
 
-## Installation
-
-    go install github.com/felkr/roamer
-
 ## Usage
 
     roamer [global options] command [command options] [arguments...]
