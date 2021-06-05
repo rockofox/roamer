@@ -20,6 +20,7 @@ jobs:
 
     - name: Build
       run: go build -v ./...
-
+    - name: Install
+      run: go install cmd/roamer/roamer.go
     - name: Test
       run: go test -v ./...
