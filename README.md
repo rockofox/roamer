@@ -42,6 +42,4 @@
 | --address value | The address of the Nomad server (default: "http://localhost:4646") |
 | --help, -h      | show help (default: false)                                         |
 
-### Examples
-
-    roamer deploy --config deployment.hcl my_project.nomad
+### [Examples](https://github.com/felkr/roamer/wiki/Basic-Example)
