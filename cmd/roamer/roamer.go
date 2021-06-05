@@ -123,11 +123,10 @@ func main() {
 		Destination: address,
 	})
 
-	// EXAMPLE: Append to an existing template
 	cli.AppHelpTemplate = fmt.Sprintf(`%s
 EXAMPLES:
    roamer deploy --config deployment.hcl my_project.nomad
-
+   roamer overview
 	`, cli.AppHelpTemplate)
 
 	var config configuration.Config
@@ -138,7 +137,7 @@ EXAMPLES:
 			Action: func(c *cli.Context) error {
 				clientConfig := api.DefaultConfig()
 				clientConfig.Address = *address
-				client, err := api.NewClient(clientConfig)
+				client, _ := api.NewClient(clientConfig)
 				clusterMemory, clusterCPU := getClusterResources(*client)
 
 				jobs, _, err := client.Jobs().List(&api.QueryOptions{})
@@ -207,6 +206,10 @@ EXAMPLES:
 				clientConfig := api.DefaultConfig()
 				clientConfig.Address = *address
 				client, _ := api.NewClient(clientConfig)
+				_, err = client.Status().Leader() // Try a basic command to find out if we succeeded in connecting to the Nomad agent
+				if err != nil {
+					log.Fatal(err)
+				}
 				clusterMemoryTotal, clusterCPUTotal := getClusterResources(*client)
 				usedMemory, usedCPU := getResourceUsage(*client)
 				clusterMemory := clusterMemoryTotal - usedMemory
@@ -247,7 +250,6 @@ EXAMPLES:
 					if err != nil {
 						return cli.Exit("Nomad returned an error: "+err.Error(), 1)
 					}
-					_, err = client.Status().Leader()
 				}
 
 				if err != nil {
