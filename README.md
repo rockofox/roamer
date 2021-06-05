@@ -25,6 +25,12 @@
 
     roamer [global options] command [command options] [arguments...]
 
+## Installation
+
+    $ git clone https://github.com/felkr/roamer
+    $ cd roamer
+    $ go install cmd/roamer/roamer.go
+
 ### Commands
 
 | Command  | Functionality                                    |
