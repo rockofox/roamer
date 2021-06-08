@@ -57,7 +57,11 @@ func Allocate(config configuration.Config, job *api.Job, smallestMemory int, sma
 					assignedCPU := minOf(availableCPU, smallestCPU) * groupConfig.Weight / 100 / len(group.Tasks)
 					if task.Resources == nil {
 						task.Resources = new(api.Resources)
+					}
+					if task.Resources.MemoryMB == nil {
 						task.Resources.MemoryMB = new(int)
+					}
+					if task.Resources.CPU == nil {
 						task.Resources.CPU = new(int)
 					}
 					*task.Resources.MemoryMB = applySafetyMargin(assignedMemory, config)
@@ -89,7 +93,12 @@ func Allocate(config configuration.Config, job *api.Job, smallestMemory int, sma
 				assignedCPU := minOf(availableCPU, smallestCPU) / weightlessTasks
 				if task.Resources == nil {
 					task.Resources = new(api.Resources)
+
+				}
+				if task.Resources.MemoryMB == nil {
 					task.Resources.MemoryMB = new(int)
+				}
+				if task.Resources.CPU == nil {
 					task.Resources.CPU = new(int)
 				}
 				*task.Resources.MemoryMB = applySafetyMargin(assignedMemory, config)
