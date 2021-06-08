@@ -53,8 +53,8 @@ func Allocate(config configuration.Config, job *api.Job, smallestMemory int, sma
 					return errors.New("sum of weights greater than 100")
 				}
 				if groupConfig.Name == *group.Name {
-					assignedMemory := minOf(smallestMemory, availableMemory) * groupConfig.Weight / 100 / len(group.Tasks)
-					assignedCPU := minOf(availableCPU, smallestCPU) * groupConfig.Weight / 100 / len(group.Tasks)
+					assignedMemory := minOf(smallestMemory, availableMemory*groupConfig.Weight/100) / len(group.Tasks)
+					assignedCPU := minOf(availableCPU, smallestCPU*groupConfig.Weight/100) / len(group.Tasks)
 					if task.Resources == nil {
 						task.Resources = new(api.Resources)
 					}
